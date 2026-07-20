@@ -1,0 +1,100 @@
+import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
+import axios from 'axios';
+
+export const fetchCart = createAsyncThunk('cart/fetchCart', async ({ getToken }, thunkAPI) => {
+    try {
+        const token = await getToken();
+        const { data } = await axios.get('/api/cart', {
+            headers: {
+                Authorization: `Bearer ${token}`
+            }
+        });
+        return data;
+    }
+    catch (error) {
+        return thunkAPI.rejectWithValue(error.response?.data || error.message);
+    }
+});
+
+export const uploadCart = createAsyncThunk('cart/uploadCart', async ({ getToken }, thunkAPI) => {
+    try {
+        const token = await getToken();
+        const { cartItems } = thunkAPI.getState().cart;
+        const { data } = await axios.post('/api/cart', { cart: cartItems }, {
+            headers: {
+                Authorization: `Bearer ${token}`
+            }
+        });
+        return data;
+    }
+    catch (err) {
+        return thunkAPI.rejectWithValue(err.response?.data || err.message);
+    }
+});
+
+
+const cartSlice = createSlice({
+    name: 'cart',
+    initialState: {
+        total: 0,
+        cartItems: {},
+        isCartLoaded: false,
+    },
+    reducers: {
+        addToCart: (state, action) => {
+            const { productId } = action.payload
+            if (state.cartItems[productId]) {
+                state.cartItems[productId]++
+            } else {
+                state.cartItems[productId] = 1
+            }
+            state.total += 1
+        },
+        removeFromCart: (state, action) => {
+            const { productId } = action.payload
+            if (state.cartItems[productId]) {
+                state.cartItems[productId]--
+                state.total -= 1
+                if (state.cartItems[productId] === 0) {
+                    delete state.cartItems[productId]
+                }
+            }
+        },
+        deleteItemFromCart: (state, action) => {
+            const { productId } = action.payload
+            state.total -= state.cartItems[productId] ? state.cartItems[productId] : 0
+            delete state.cartItems[productId]
+        },
+        clearCart: (state) => {
+            state.cartItems = {}
+            state.total = 0
+            state.isCartLoaded = false
+        },
+        checkoutClearCart: (state) => {
+            state.cartItems = {}
+            state.total = 0
+            state.isCartLoaded = true
+        },
+    },
+    extraReducers: (builder) => {
+        builder.addCase(fetchCart.fulfilled, (state, action) => {
+            if (state.isCartLoaded) {
+                return;
+            }
+            const dbCart = action.payload?.cart || {};
+            const mergedCart = { ...dbCart };
+            for (const [key, value] of Object.entries(state.cartItems)) {
+                mergedCart[key] = (mergedCart[key] || 0) + value;
+            }
+            state.cartItems = mergedCart;
+            state.total = Object.values(state.cartItems).reduce((acc, item) => acc + item, 0);
+            state.isCartLoaded = true;
+        });
+        builder.addCase(fetchCart.rejected, (state) => {
+            state.isCartLoaded = true;
+        });
+    }
+})
+
+export const { addToCart, removeFromCart, clearCart, deleteItemFromCart, checkoutClearCart } = cartSlice.actions
+export default cartSlice.reducer
